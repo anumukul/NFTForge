@@ -160,6 +160,13 @@ contract NFTContract is
         string rarityName
     );
 
+    event BatchMinted(
+
+        address indexed to,
+        uint256 quanity,
+        uint256 startTokenId
+    )
+
     function _generateRandomRarity() private returns (uint256) {
         randomSeed = uint256(
             keccak256(
@@ -314,5 +321,42 @@ contract NFTContract is
         return
             rarityTiers[rarityTierIndex].currentSupply <
             rarityTiers[rarityTierIndex].maxSupply;
+    }
+
+    function batchMint(
+        address to,
+        uint256 quantity
+    ) external whenNotPaused nonReentrant {
+        require(quantity > 0 && quantity <= 10, "Not a valid quantity");
+        require(
+            currentSupply + quantity <= maxSupply,
+            "Batch mint exceeds max supply"
+        );
+
+        require(to != address(0), "Cannot mint to zero Address");
+        uint256 startTokenId = tokenIds.current();
+
+        for (uint256 i = 0; i < quantity; i++) {
+            uint256 selectedRarityTier = _generateRandomRarity();
+            uint256 tokenId = tokenIds.current();
+            _safeMint(to, tokenId);
+
+            tokenIds.increment();
+            currentSupply++;
+
+            tokenToRarity[tokenId] = selectedRarityTier;
+            rarityTiers[selectedRarityTier].currentSupply++;
+
+            _setTokenURI(tokenId, _constructTokenURI(tokenId));
+
+            emit TokenMinted(
+                to,
+                tokenId,
+                selectedRarityTier,
+                rarityTiers[selectedRarityTier].name
+            );
+        }
+
+        emit BatchMinted(to, quantity, startTokenId);
     }
 }
