@@ -152,4 +152,167 @@ contract NFTContract is
     ) public view override(ERC721, ERC721URIStorage) returns (bool) {
         return super.supportsInterface(interfaceId);
     }
+
+    event TokenMinted(
+        address indexed to,
+        uint256 indexed tokenId,
+        uint256 rarityTier,
+        string rarityName
+    );
+
+    function _generateRandomRarity() private returns (uint256) {
+        randomSeed = uint256(
+            keccak256(
+                abi.encodePacked(
+                    randomSeed,
+                    block.timestamp,
+                    block.difficulty,
+                    msg.sender,
+                    tokenIds.current()
+                )
+            )
+        );
+
+        uint256 randomNumber = randomSeed % 10000;
+
+        uint256 cumulativeProbability = 0;
+
+        for (uint256 i = 0; i < rarityTiers.length; i++) {
+            cumulativeProbability += rarityTiers[i].probability;
+
+            if (randomNumber < cumulativeProbability) {
+                if (rarityTiers[i].currentSupply < rarityTiers[i].maxSupply) {
+                    return i;
+                }
+            }
+        }
+
+        for (uint256 i = 0; i < rarityTiers.length; i++) {
+            if (rarityTiers[i].currentSupply < rarityTiers[i].maxSupply) {
+                return i;
+            }
+        }
+
+        revert("No rarity tiers available");
+    }
+
+    function mint(address to) external whenNotPaused nonReentrant {
+        require(currentSupply < maxSupply, "Maximum Supply reached");
+        require(to != address(0), "Cannot mint to zero address");
+
+        uint256 selectedRarityTier = _generateRandomRarity();
+
+        require(
+            rarityTiers[selectedRarityTier].currentSupply <
+                rarityTiers[selectedRarityTier].maxSupply,
+            "Selected rarity tier supply exhausted"
+        );
+
+        uint256 tokenId = tokenIds.current();
+        _safeMint(to, tokenId);
+        tokenIds.increment();
+
+        currentSupply++;
+        tokenToRarity[tokenId] = selectedRarityTier;
+        rarityTiers[selectedRarityTier].currentSupply++;
+
+        _setTokenURI(tokenId, _constructTokenURI(tokenId));
+
+        emit TokenMinted(
+            to,
+            tokenId,
+            selectedRarityTier,
+            rarityTiers[selectedRarityTier].name
+        );
+    }
+
+    function _constructTokenURI(
+        uint256 tokenId
+    ) private view returns (string memory) {
+        if (!revealed) {
+            return hiddenMetaDataURI;
+        }
+
+        return string(abi.encodePacked(baseURI, _toString(tokenId), ".json"));
+    }
+
+    function _toString(uint256 value) private pure returns (string memory) {
+        if (value == 0) {
+            return "0";
+        }
+        uint256 temp = value;
+        uint256 digits;
+        while (temp != 0) {
+            digits++;
+            temp = temp / 10;
+        }
+
+        bytes memory buffer = new bytes(digits);
+        while (value != 0) {
+            digits -= 1;
+            buffer[digits] = bytes1(uint8(48 + uint256(value % 10)));
+            value /= 10;
+        }
+
+        return string(buffer);
+    }
+
+    function ownerMint(address to, uint256 rarityTierIndex) external onlyOwner {
+        require(currentSupply < maxSupply, "Maximum supply reached");
+
+        require(to != address(0), "cannot mint to zero address");
+
+        require(rarityTierIndex < rarityTiers.length, "Invalid rarity tier");
+
+        require(
+            rarityTiers[rarityTierIndex].currentSupply <
+                rarityTiers[rarityTierIndex].maxSupply,
+            "Rarity tier supply exhausted"
+        );
+
+        uint256 tokenId = tokenIds.current();
+        _safeMint(to, tokenId);
+
+        tokenIds.increment();
+        currentSupply++;
+
+        tokenToRarity[tokenId] = rarityTierIndex;
+        rarityTiers[rarityTierIndex].currentSupply++;
+
+        _setTokenURI(tokenId, _constructTokenURI(tokenId));
+        emit TokenMinted(
+            to,
+            tokenId,
+            rarityTierIndex,
+            rarityTiers[rarityTierIndex].name
+        );
+    }
+
+    function getRemainingRaritySupply(
+        uint256 rarityTierIndex
+    ) external view returns (uint256) {
+        require(
+            rarityTierIndex < rarityTiers.length,
+            "Rarity tier does not exist"
+        );
+        return
+            rarityTiers[rarityTierIndex].maxSupply -
+            rarityTiers[rarityTierIndex].currentSupply;
+    }
+
+    function getRemainingSupply() external view returns (uint256) {
+        return maxSupply - currentSupply;
+    }
+
+    function isRarityTierAvailable(
+        uint256 rarityTierIndex
+    ) external view returns (bool) {
+        require(
+            rarityTierIndex < rarityTiers.length,
+            "Invalid rarity tier index"
+        );
+        return
+            rarityTiers[rarityTierIndex].currentSupply <
+            rarityTiers[rarityTierIndex].maxSupply;
+    }
 }
