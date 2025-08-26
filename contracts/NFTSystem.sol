@@ -167,6 +167,8 @@ contract NFTContract is
     event HiddenMetaDataURIUpdated(string newHiddenMetaDataURI);
     event TokensRevealed();
 
+    event TokenMetaDataUpdated(uint256 indexed tokenId, string newURI);
+
     function _generateRandomRarity() private returns (uint256) {
         randomSeed = uint256(
             keccak256(
@@ -405,5 +407,22 @@ contract NFTContract is
 
     function contractURI() external view returns (string memory) {
         return _contractURI;
+    }
+
+    function updateTokenMetadata(
+        uint256 tokenId,
+        string calldata newURI
+    ) external onlyOwner {
+        require(_exists(tokenId), "Invalid tokenId");
+        require(revealed, "Token not revealed yet");
+        _setTokenURI(tokenId, newURI);
+
+        emit TokenMetaDataUpdated(tokenId, newURI);
+    }
+
+    function migrateToIPFS(string calldata newIPFSBaseURI) external onlyOwner {
+        require(revealed, "Cannot migrate before reveal");
+        baseURI = newIPFSBaseURI;
+        emit BaseURIUpdated(newIPFSBaseURI);
     }
 }
