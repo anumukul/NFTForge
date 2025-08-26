@@ -24,7 +24,7 @@ contract NFTContract is
     uint256 public currentSupply = 0;
 
     string public baseURI;
-    string public contractURI;
+    string public _contractURI;
     bool public revealed = false;
     string public hiddenMetaDataURI;
 
@@ -47,11 +47,11 @@ contract NFTContract is
         string memory _name,
         string memory _symbol,
         string memory _baseURI,
-        string memory _contractURI,
+        string memory contractURI_,
         string memory _hiddenMetaDataURI
     ) ERC721(_name, _symbol) {
         baseURI = _baseURI;
-        contractURI = _contractURI;
+        _contractURI = contractURI_;
         hiddenMetaDataURI = _hiddenMetaDataURI;
 
         tokenIds.increment();
@@ -141,12 +141,6 @@ contract NFTContract is
         super._burn(tokenId);
     }
 
-    function tokenURI(
-        uint256 tokenId
-    ) public view override(ERC721, ERC721URIStorage) returns (string memory) {
-        return super.tokenURI(tokenId);
-    }
-
     function supportsInterface(
         bytes4 interfaceId
     ) public view override(ERC721, ERC721URIStorage) returns (bool) {
@@ -161,11 +155,17 @@ contract NFTContract is
     );
 
     event BatchMinted(
-
         address indexed to,
-        uint256 quanity,
+        uint256 quantity,
         uint256 startTokenId
-    )
+    );
+
+    event BaseURIUpdated(string newBaseURI);
+
+    event ContractURIUpdated(string newContractURI);
+
+    event HiddenMetaDataURIUpdated(string newHiddenMetaDataURI);
+    event TokensRevealed();
 
     function _generateRandomRarity() private returns (uint256) {
         randomSeed = uint256(
@@ -358,5 +358,52 @@ contract NFTContract is
         }
 
         emit BatchMinted(to, quantity, startTokenId);
+    }
+
+    function tokenURI(
+        uint256 tokenId
+    ) public view override(ERC721, ERC721URIStorage) returns (string memory) {
+        require(_exists(tokenId), "URI query for non existing token");
+
+        if (!revealed) {
+            return hiddenMetaDataURI;
+        }
+
+        string memory _tokenURI = super.tokenURI(tokenId);
+
+        if (bytes(_tokenURI).length > 0) {
+            return _tokenURI;
+        }
+
+        return string(abi.encodePacked(baseURI, _toString(tokenId), ".json"));
+    }
+
+    function setBaseURI(string calldata newBaseURI) external onlyOwner {
+        baseURI = newBaseURI;
+
+        emit BaseURIUpdated(newBaseURI);
+    }
+
+    function setContractURI(string calldata newContractURI) external onlyOwner {
+        _contractURI = newContractURI;
+        emit ContractURIUpdated(newContractURI);
+    }
+
+    function setHiddenMetaDataURI(
+        string calldata newHiddenMetaDataURI
+    ) external onlyOwner {
+        hiddenMetaDataURI = newHiddenMetaDataURI;
+        emit HiddenMetaDataURIUpdated(newHiddenMetaDataURI);
+    }
+
+    function reveal() external onlyOwner {
+        require(!revealed, "Tokens already revealed");
+
+        revealed = true;
+        emit TokensRevealed();
+    }
+
+    function contractURI() external view returns (string memory) {
+        return _contractURI;
     }
 }
