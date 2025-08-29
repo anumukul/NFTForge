@@ -48,6 +48,13 @@ contract NFTContract is
     uint256 public maxWhitelistMints = 3;
     bool public whitelistPhaseActive = false;
 
+    uint256 public auctionStartPrice = 1 ether;
+    uint256 public auctionEndPrice = 0.1 ether;
+    uint256 public auctionStartTime;
+    uint256 public auctionDuration = 3600;
+    uint256 public auctionPriceDropInterval = 300;
+    bool public auctionActive = false;
+
     constructor(
         string memory _name,
         string memory _symbol,
@@ -177,6 +184,26 @@ contract NFTContract is
     event WhitelistUpdated(address indexed user, bool status);
     event WhitelistPhaseToggled(bool active);
     event WhitelistMinted(address indexed to, uint256 quantity);
+
+    event AuctionStarted(
+        uint256 startPrice,
+        uint256 endPrice,
+        uint256 duration,
+        uint256 startTime
+    );
+
+    event AuctionEnded();
+    event AuctionPriceUpdated(
+        uint256 startPrice,
+        uint256 endPrice,
+        uint256 duration
+    );
+    event AuctionMinted(
+        address indexed buyer,
+        uint256 quantity,
+        uint256 totalPrice,
+        uint256 pricePerToken
+    );
 
     function _generateRandomRarity() private returns (uint256) {
         randomSeed = uint256(
@@ -526,5 +553,190 @@ contract NFTContract is
         address user
     ) external view returns (uint256) {
         return whitelistMinted[user];
+    }
+
+    function getCurrentAuctionPrice() public view returns (uint256) {
+        if (!auctionActive) {
+            return auctionStartPrice;
+        }
+
+        if (block.timestamp < auctionStartTime) {
+            return auctionStartPrice;
+        }
+
+        uint256 timeElapsed = block.timestamp - auctionStartTime;
+
+        if (timeElapsed >= auctionDuration) {
+            return auctionEndPrice;
+        }
+
+        uint256 dropIntervals = timeElapsed / auctionPriceDropInterval;
+
+        uint256 totalDropIntervals = auctionDuration / auctionPriceDropInterval;
+
+        if (dropIntervals = 0) {
+            return auctionStartPrice;
+        }
+
+        uint256 totalPriceDrop = auctionStartPrice - auctionEndPrice;
+        uint256 priceDropPerInterval = totalPriceDrop / totalDropIntervals;
+
+        uint256 currentPrice = auctionStartPrice -
+            (dropIntervals * priceDropPerInterval);
+
+        if (currentPrice < auctionEndPrice) {
+            return auctionEndPrice;
+        }
+
+        return currentPrice;
+    }
+
+    function startAuction(
+        uint256 startPrice,
+        uint256 endPrice,
+        uint256 duration,
+        uint256 priceDropInterval
+    ) external onlyOwner {
+        require(!auctionActive, "Auction already active");
+        require(
+            startPrice > endPrice,
+            "Start price must be higher than the end price"
+        );
+        require(duration > 0, "Duration must be greater than 0");
+        require(
+            priceDropInterval > 0 && priceDropInterval <= duration,
+            "Invalid price drop interval"
+        );
+
+        auctionStartPrice = startPrice;
+        auctionEndPrice = endPrice;
+        auctionDuration = duration;
+        auctionPriceDropInterval = priceDropInterval;
+        auctionStartTime = block.timestamp;
+        auctionActive = true;
+
+        emit AuctionStarted(startPrice, endPrice, duration, block.timestamp);
+    }
+
+    function endAuction() external onlyOwner {
+        require(auctionActive, "Auction not active");
+        auctionActive = false;
+        emit AuctionEnded();
+    }
+
+    function setAuctionParameters(
+        uint256 startPrice,
+        uint256 endPrice,
+        uint256 duration,
+        uint256 priceDropInterval
+    ) external onlyOwner {
+        require(
+            !auctionActive,
+            "Cannot update parameters during active auction"
+        );
+        require(
+            startPrice > endPrice,
+            "Start price must be higher than the end price"
+        );
+        require(duration > 0, "Duration must be greater than 0");
+        require(
+            priceDropInterval > 0 && priceDropInterval <= duration,
+            "Invalid price drop interval"
+        );
+
+        auctionStartPrice = startPrice;
+        auctionEndPrice = endPrice;
+        auctionDuration = duration;
+        auctionPriceDropInterval = priceDropInterval;
+
+        emit AuctionPriceUpdated(startPrice, endPrice, duration);
+    }
+
+    function auctionMint(
+        uint256 quantity
+    ) external payable whenNotPaused nonReentrant {
+        require(auctionActive, "Auction not active");
+        require(block.timestamp >= auctionStartTime, "Auction not started yet");
+        require(
+            quantity > 0 && quantity <= 10,
+            "Invalid quanity:1-10 tokens allowed"
+        );
+        require(currentSupply + quantity <= maxSupply, "Exceeds max supply");
+
+        uint256 currentPrice = getCurrentAuctionPrice();
+        uint256 totalCost = currentPrice * quantity;
+        require(msg.value >= totalCost, "Insufficient payment");
+
+        uint256 startTokenId = tokenIds.current();
+
+        for (uint256 i = 0; i < quantity; i++) {
+            uint256 selectedRarityTier = _generateRandomRarity();
+            uint256 tokenId = tokenIds.current();
+
+            _safeMint(msg.sender, tokenId);
+            tokenIds.increment();
+
+            currentSupply++;
+
+            tokenToRarity[tokenId] = selectedRarityTier;
+            rarityTiers[selectedRarityTier].currentSupply++;
+            _setTokenURI(tokenId, _constructTokenURI(tokenId));
+
+            emit TokenMinted(
+                msg.sender,
+                tokenId,
+                selectedRarityTier,
+                rarityTiers[selectedRarityTier].name
+            );
+        }
+
+        if (msg.value > totalCost) {
+            payable(msg.sender).transfer(msg.value - totalCost);
+        }
+
+        emit AuctionMinted(msg.sender, quantity, totalCost, currentPrice);
+        emit BatchMinted(msg.sender, quantity, startTokenId);
+    }
+
+    function getAuctionStatus()
+        external
+        view
+        returns (bool isActive, uint256 currentPrice, uint256 timeRemaining)
+    {
+        isActive = auctionActive;
+        currentPrice = getCurrentAuctionPrice();
+        if (!auctionActive || block.timestamp < auctionStartTime) {
+            timeRemaining = 0;
+        } else if (block.timestamp >= auctionStartTime + auctionDuration) {
+            timeRemaining = 0;
+        } else {
+            timeRemaining =
+                (auctionStartTime + auctionDuration) -
+                block.timestamp;
+        }
+
+        return (isActive, currentPrice, timeRemaining);
+    }
+
+    function hasAuctionEnded() external view returns (bool) {
+        if (!auctionActive) return true;
+        return block.timestamp >= auctionStartTime + auctionDuration;
+    }
+
+    function getNextPriceDropTime() external view returns (uint256) {
+        if (!auctionActive || block.timestamp < auctionStartTime) {
+            return 0;
+        }
+
+        uint256 timeElapsed = block.timestamp - auctionStartTime;
+        uint256 currentInterval = timeElapsed / auctionPriceDropInterval;
+        uint256 nextDropTime = auctionStartTime +
+            ((currentInterval + 1) * auctionPriceDropInterval);
+
+        if (nextDropTime >= auctionStartTime + auctionDuration) {
+            return 0;
+        }
+
+        return nextDropTime;
     }
 }
