@@ -43,6 +43,11 @@ contract NFTContract is
 
     uint256 private randomSeed;
 
+    mapping(address => bool) public whitelist;
+    mapping(address => uint256) public whitelistMinted;
+    uint256 public maxWhitelistMints = 3;
+    bool public whitelistPhaseActive = false;
+
     constructor(
         string memory _name,
         string memory _symbol,
@@ -168,6 +173,10 @@ contract NFTContract is
     event TokensRevealed();
 
     event TokenMetaDataUpdated(uint256 indexed tokenId, string newURI);
+
+    event WhitelistUpdated(address indexed user, bool status);
+    event WhitelistPhaseToggled(bool active);
+    event WhitelistMinted(address indexed to, uint256 quantity);
 
     function _generateRandomRarity() private returns (uint256) {
         randomSeed = uint256(
@@ -424,5 +433,98 @@ contract NFTContract is
         require(revealed, "Cannot migrate before reveal");
         baseURI = newIPFSBaseURI;
         emit BaseURIUpdated(newIPFSBaseURI);
+    }
+
+    function addToWhitelist(address[] calldata addresses) external onlyOwner {
+        for (uint i = 0; i < addresses.length; i++) {
+            require(
+                addresses[i] != address(0),
+                "Cannot whitelist zero address"
+            );
+            whitelist[addresses[i]] = true;
+            emit WhitelistUpdated(addresses[i], true);
+        }
+    }
+
+    function removeFromWhitelist(
+        address[] calldata addresses
+    ) external onlyOwner {
+        for (uint256 i = 0; i < addresses.length; i++) {
+            whitelist[addresses[i]] = false;
+
+            emit WhitelistUpdated(addresses[i], false);
+        }
+    }
+
+    function setWhitelistPhase(bool active) external onlyOwner {
+        whitelistPhaseActive = active;
+        emit WhitelistPhaseToggled(active);
+    }
+
+    function setMaxWhitelistMints(uint256 maxMints) external onlyOwner {
+        require(maxMints > 0, "Max mints must be greater than 0");
+        maxWhitelistMints = maxMints;
+    }
+
+    function whitelistMint(
+        uint256 quantity
+    ) external whenNotPaused nonReentrant {
+        require(whitelistPhaseActive, "Whitelist phase not active");
+        require(whitelist[msg.sender], "Address not whitelisted");
+        require(quantity > 0, "Quanitity must be greater than 0");
+        require(
+            whitelistMinted[msg.sender] + quantity <= maxWhitelistMints,
+            "Exceed whitelist mint limit"
+        );
+        require(currentSupply + quantity <= maxSupply, "Exceeds max supply");
+
+        uint256 startTokenId = tokenIds.current();
+
+        for (uint256 i = 0; i < quantity; i++) {
+            uint256 selectedRarityTier = _generateRandomRarity();
+            uint526 tokenId = tokenIds.current();
+
+            _safeMint(msg.sender, tokenId);
+            tokenIds.increment();
+            currentSupply++;
+
+            tokenToRarity[tokenId] = selectedRarityTier;
+            rarityTiers[selectedRarityTier].currentSupply++;
+
+            _setTokenURI(tokenId, _constructTokenURI(tokenId));
+
+            emit TokenMinted(
+                msg.sender,
+                tokenId,
+                selectedRarityTier,
+                rarityTiers[selectedRarityTier].name
+            );
+        }
+
+        whitelistMinted[msg.sender] += quantity;
+
+        emit WhitelistMinted(msg.sender, quantity);
+
+        emit BatchMinted(msg.sender, quantity, startTokenId);
+    }
+
+    function isWhitelisted(address user) external view returns (bool) {
+        return whitelist[user];
+    }
+
+    function getRemainingWhiteListMints(
+        address user
+    ) external view returns (uint256) {
+        if (!whitelist[user]) {
+            return 0;
+        }
+
+        return maxWhitelistMints - whitelistMinted[user];
+    }
+
+    function getWhitelistMintedCount(
+        address user
+    ) external view returns (uint256) {
+        return whitelistMinted[user];
     }
 }
