@@ -1,0 +1,2 @@
+Contract Address=0x198Cc2F976d5a1CB0263090a7aF10Dca13092b38
+Testnet=Sepolia
