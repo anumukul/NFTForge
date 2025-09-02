@@ -1,4 +1,4 @@
-// SPDX-License-Identifier:MIT
+// SPDX-License-Identifier: MIT
 
 pragma solidity ^0.8.19;
 
@@ -11,6 +11,7 @@ import "@openzeppelin/contracts/security/Pausable.sol";
 import "@openzeppelin/contracts/interfaces/IERC2981.sol";
 import "@openzeppelin/contracts/access/AccessControl.sol";
 import "@openzeppelin/contracts/token/ERC20/IERC20.sol";
+import "@openzeppelin/contracts/utils/Strings.sol";
 
 contract NFTContract is
     ERC721,
@@ -22,6 +23,7 @@ contract NFTContract is
     AccessControl
 {
     using Counters for Counters.Counter;
+    using Strings for uint256;
 
     Counters.Counter private tokenIds;
 
@@ -76,6 +78,8 @@ contract NFTContract is
     bool public emergencyStop = false;
     address public withdrawAddress;
 
+    uint256 public constant MAX_MINT_PER_TX = 10;
+
     constructor(
         string memory _name,
         string memory _symbol,
@@ -85,6 +89,15 @@ contract NFTContract is
         address royaltyRecipient_,
         address withdrawAddress_
     ) ERC721(_name, _symbol) {
+        require(
+            royaltyRecipient_ != address(0),
+            "Royalty recipient cannot be zero address"
+        );
+        require(
+            withdrawAddress_ != address(0),
+            "Withdraw address cannot be zero address"
+        );
+
         baseURI = _baseURI;
         _contractURI = contractURI_;
         hiddenMetaDataURI = _hiddenMetaDataURI;
@@ -103,7 +116,6 @@ contract NFTContract is
         );
 
         _grantRole(DEFAULT_ADMIN_ROLE, msg.sender);
-
         _grantRole(ADMIN_ROLE, msg.sender);
         _grantRole(MINTER_ROLE, msg.sender);
         _grantRole(STAKING_ROLE, msg.sender);
@@ -119,7 +131,6 @@ contract NFTContract is
                 specialAttribute: "Standard"
             })
         );
-
         rarityNameToIndex["Common"] = 0;
 
         rarityTiers.push(
@@ -131,7 +142,6 @@ contract NFTContract is
                 specialAttribute: "Enhanced"
             })
         );
-
         rarityNameToIndex["Rare"] = 1;
 
         rarityTiers.push(
@@ -143,7 +153,6 @@ contract NFTContract is
                 specialAttribute: "Legendary"
             })
         );
-
         rarityNameToIndex["Epic"] = 2;
 
         rarityTiers.push(
@@ -162,7 +171,6 @@ contract NFTContract is
         uint256 index
     ) external view returns (RarityTier memory) {
         require(index < rarityTiers.length, "Invalid index");
-
         return rarityTiers[index];
     }
 
@@ -174,7 +182,6 @@ contract NFTContract is
         uint256 tokenId
     ) external view returns (RarityTier memory) {
         require(_exists(tokenId), "Token does not exist");
-
         uint256 rarityIndex = tokenToRarity[tokenId];
         return rarityTiers[rarityIndex];
     }
@@ -185,45 +192,31 @@ contract NFTContract is
         super._burn(tokenId);
     }
 
-    function supportsInterface(
-        bytes4 interfaceId
-    ) public view override(ERC721, ERC721URIStorage) returns (bool) {
-        return super.supportsInterface(interfaceId);
-    }
-
     event TokenMinted(
         address indexed to,
         uint256 indexed tokenId,
         uint256 rarityTier,
         string rarityName
     );
-
     event BatchMinted(
         address indexed to,
         uint256 quantity,
         uint256 startTokenId
     );
-
     event BaseURIUpdated(string newBaseURI);
-
     event ContractURIUpdated(string newContractURI);
-
     event HiddenMetaDataURIUpdated(string newHiddenMetaDataURI);
     event TokensRevealed();
-
     event TokenMetaDataUpdated(uint256 indexed tokenId, string newURI);
-
     event WhitelistUpdated(address indexed user, bool status);
     event WhitelistPhaseToggled(bool active);
     event WhitelistMinted(address indexed to, uint256 quantity);
-
     event AuctionStarted(
         uint256 startPrice,
         uint256 endPrice,
         uint256 duration,
         uint256 startTime
     );
-
     event AuctionEnded();
     event AuctionPriceUpdated(
         uint256 startPrice,
@@ -236,21 +229,17 @@ contract NFTContract is
         uint256 totalPrice,
         uint256 pricePerToken
     );
-
     event RoyaltyUpdated(address recipient, uint96 fee);
     event TokenStaked(uint256 indexed tokenId, address indexed owner);
     event TokenUnstaked(uint256 indexed tokenId, address indexed owner);
     event StakingToggled(bool enabled);
-
     event EmergencyStopToggled(bool stopped);
     event EmergencyWithdrawal(address indexed recipient, uint256 amount);
-
     event ERC20Recovered(
         address indexed token,
         address indexed recipient,
         uint256 amount
     );
-
     event WithdrawAddressUpdated(address indexed newAddress);
 
     function _generateRandomRarity() private returns (uint256) {
@@ -267,12 +256,10 @@ contract NFTContract is
         );
 
         uint256 randomNumber = randomSeed % 10000;
-
         uint256 cumulativeProbability = 0;
 
         for (uint256 i = 0; i < rarityTiers.length; i++) {
             cumulativeProbability += rarityTiers[i].probability;
-
             if (randomNumber < cumulativeProbability) {
                 if (rarityTiers[i].currentSupply < rarityTiers[i].maxSupply) {
                     return i;
@@ -289,12 +276,13 @@ contract NFTContract is
         revert("No rarity tiers available");
     }
 
-    function mint(address to) external whenNotPaused nonReentrant {
-        require(currentSupply < maxSupply, "Maximum Supply reached");
+    function mint(
+        address to
+    ) external whenNotPaused whenNotStopped nonReentrant {
+        require(currentSupply < maxSupply, "Maximum supply reached");
         require(to != address(0), "Cannot mint to zero address");
 
         uint256 selectedRarityTier = _generateRandomRarity();
-
         require(
             rarityTiers[selectedRarityTier].currentSupply <
                 rarityTiers[selectedRarityTier].maxSupply,
@@ -325,38 +313,13 @@ contract NFTContract is
         if (!revealed) {
             return hiddenMetaDataURI;
         }
-
-        return string(abi.encodePacked(baseURI, _toString(tokenId), ".json"));
-    }
-
-    function _toString(uint256 value) private pure returns (string memory) {
-        if (value == 0) {
-            return "0";
-        }
-        uint256 temp = value;
-        uint256 digits;
-        while (temp != 0) {
-            digits++;
-            temp = temp / 10;
-        }
-
-        bytes memory buffer = new bytes(digits);
-        while (value != 0) {
-            digits -= 1;
-            buffer[digits] = bytes1(uint8(48 + uint256(value % 10)));
-            value /= 10;
-        }
-
-        return string(buffer);
+        return string(abi.encodePacked(baseURI, tokenId.toString(), ".json"));
     }
 
     function ownerMint(address to, uint256 rarityTierIndex) external onlyOwner {
         require(currentSupply < maxSupply, "Maximum supply reached");
-
-        require(to != address(0), "cannot mint to zero address");
-
+        require(to != address(0), "Cannot mint to zero address");
         require(rarityTierIndex < rarityTiers.length, "Invalid rarity tier");
-
         require(
             rarityTiers[rarityTierIndex].currentSupply <
                 rarityTiers[rarityTierIndex].maxSupply,
@@ -365,7 +328,6 @@ contract NFTContract is
 
         uint256 tokenId = tokenIds.current();
         _safeMint(to, tokenId);
-
         tokenIds.increment();
         currentSupply++;
 
@@ -412,14 +374,17 @@ contract NFTContract is
     function batchMint(
         address to,
         uint256 quantity
-    ) external whenNotPaused nonReentrant {
-        require(quantity > 0 && quantity <= 10, "Not a valid quantity");
+    ) external whenNotPaused whenNotStopped nonReentrant {
+        require(
+            quantity > 0 && quantity <= MAX_MINT_PER_TX,
+            "Invalid quantity: 1-10 tokens allowed"
+        );
         require(
             currentSupply + quantity <= maxSupply,
             "Batch mint exceeds max supply"
         );
+        require(to != address(0), "Cannot mint to zero address");
 
-        require(to != address(0), "Cannot mint to zero Address");
         uint256 startTokenId = tokenIds.current();
 
         for (uint256 i = 0; i < quantity; i++) {
@@ -456,17 +421,16 @@ contract NFTContract is
         }
 
         string memory _tokenURI = super.tokenURI(tokenId);
-
         if (bytes(_tokenURI).length > 0) {
             return _tokenURI;
         }
 
-        return string(abi.encodePacked(baseURI, _toString(tokenId), ".json"));
+        return string(abi.encodePacked(baseURI, tokenId.toString(), ".json"));
     }
 
     function setBaseURI(string calldata newBaseURI) external onlyOwner {
+        require(bytes(newBaseURI).length > 0, "Base URI cannot be empty");
         baseURI = newBaseURI;
-
         emit BaseURIUpdated(newBaseURI);
     }
 
@@ -484,7 +448,6 @@ contract NFTContract is
 
     function reveal() external onlyOwner {
         require(!revealed, "Tokens already revealed");
-
         revealed = true;
         emit TokensRevealed();
     }
@@ -500,7 +463,6 @@ contract NFTContract is
         require(_exists(tokenId), "Invalid tokenId");
         require(revealed, "Token not revealed yet");
         _setTokenURI(tokenId, newURI);
-
         emit TokenMetaDataUpdated(tokenId, newURI);
     }
 
@@ -511,7 +473,8 @@ contract NFTContract is
     }
 
     function addToWhitelist(address[] calldata addresses) external onlyOwner {
-        for (uint i = 0; i < addresses.length; i++) {
+        require(addresses.length > 0, "Empty addresses array");
+        for (uint256 i = 0; i < addresses.length; i++) {
             require(
                 addresses[i] != address(0),
                 "Cannot whitelist zero address"
@@ -524,9 +487,9 @@ contract NFTContract is
     function removeFromWhitelist(
         address[] calldata addresses
     ) external onlyOwner {
+        require(addresses.length > 0, "Empty addresses array");
         for (uint256 i = 0; i < addresses.length; i++) {
             whitelist[addresses[i]] = false;
-
             emit WhitelistUpdated(addresses[i], false);
         }
     }
@@ -543,10 +506,10 @@ contract NFTContract is
 
     function whitelistMint(
         uint256 quantity
-    ) external whenNotPaused nonReentrant {
+    ) external whenNotPaused whenNotStopped nonReentrant {
         require(whitelistPhaseActive, "Whitelist phase not active");
         require(whitelist[msg.sender], "Address not whitelisted");
-        require(quantity > 0, "Quanitity must be greater than 0");
+        require(quantity > 0, "Quantity must be greater than 0");
         require(
             whitelistMinted[msg.sender] + quantity <= maxWhitelistMints,
             "Exceed whitelist mint limit"
@@ -577,9 +540,7 @@ contract NFTContract is
         }
 
         whitelistMinted[msg.sender] += quantity;
-
         emit WhitelistMinted(msg.sender, quantity);
-
         emit BatchMinted(msg.sender, quantity, startTokenId);
     }
 
@@ -593,7 +554,6 @@ contract NFTContract is
         if (!whitelist[user]) {
             return 0;
         }
-
         return maxWhitelistMints - whitelistMinted[user];
     }
 
@@ -619,7 +579,6 @@ contract NFTContract is
         }
 
         uint256 dropIntervals = timeElapsed / auctionPriceDropInterval;
-
         uint256 totalDropIntervals = auctionDuration / auctionPriceDropInterval;
 
         if (dropIntervals == 0) {
@@ -702,12 +661,12 @@ contract NFTContract is
 
     function auctionMint(
         uint256 quantity
-    ) external payable whenNotPaused nonReentrant {
+    ) external payable whenNotPaused whenNotStopped nonReentrant {
         require(auctionActive, "Auction not active");
         require(block.timestamp >= auctionStartTime, "Auction not started yet");
         require(
-            quantity > 0 && quantity <= 10,
-            "Invalid quanity:1-10 tokens allowed"
+            quantity > 0 && quantity <= MAX_MINT_PER_TX,
+            "Invalid quantity: 1-10 tokens allowed"
         );
         require(currentSupply + quantity <= maxSupply, "Exceeds max supply");
 
@@ -723,7 +682,6 @@ contract NFTContract is
 
             _safeMint(msg.sender, tokenId);
             tokenIds.increment();
-
             currentSupply++;
 
             tokenToRarity[tokenId] = selectedRarityTier;
@@ -826,14 +784,14 @@ contract NFTContract is
         require(stakingEnabled, "Staking not enabled");
         require(_exists(tokenId), "Token does not exist");
         require(ownerOf(tokenId) == msg.sender, "Not token owner");
-        require(stakedTokens[tokenId], "Tokens not staked");
+        require(stakedTokens[tokenId], "Token not staked");
 
         stakedTokens[tokenId] = false;
         stakingStartTime[tokenId] = 0;
 
         uint256[] storage userTokens = userStakedTokens[msg.sender];
         for (uint256 i = 0; i < userTokens.length; i++) {
-            if (userTokens[i] = tokenId) {
+            if (userTokens[i] == tokenId) {
                 userTokens[i] = userTokens[userTokens.length - 1];
                 userTokens.pop();
                 break;
@@ -849,7 +807,6 @@ contract NFTContract is
         if (!stakedTokens[tokenId] || stakingStartTime[tokenId] == 0) {
             return 0;
         }
-
         return block.timestamp - stakingStartTime[tokenId];
     }
 
@@ -896,7 +853,6 @@ contract NFTContract is
             uint256 tokenId = tokenIds.current();
 
             _safeMint(to, tokenId);
-
             tokenIds.increment();
             currentSupply++;
 
@@ -922,7 +878,6 @@ contract NFTContract is
         } else {
             _unpause();
         }
-
         emit EmergencyStopToggled(stopped);
     }
 
@@ -932,7 +887,7 @@ contract NFTContract is
         emit WithdrawAddressUpdated(newAddress);
     }
 
-    function withdraw() external onlyOwner {
+    function withdraw() external onlyOwner nonReentrant {
         require(withdrawAddress != address(0), "Withdraw address not set");
         uint256 balance = address(this).balance;
         require(balance > 0, "No funds to withdraw");
@@ -941,7 +896,7 @@ contract NFTContract is
         require(success, "Withdrawal failed");
     }
 
-    function emergencyWithdraw() external onlyOwner {
+    function emergencyWithdraw() external onlyOwner nonReentrant {
         uint256 balance = address(this).balance;
         require(balance > 0, "No funds to withdraw");
 
@@ -959,7 +914,6 @@ contract NFTContract is
 
     function recoverERC721(address token, uint256 tokenId) external onlyOwner {
         require(token != address(this), "Cannot recover own tokens");
-
         IERC721(token).transferFrom(address(this), owner(), tokenId);
     }
 
@@ -968,17 +922,138 @@ contract NFTContract is
     )
         public
         view
-        override(ERC721, ERC721URIStorage, AccessControl, IERC165)
+        override(ERC721, ERC721URIStorage, AccessControl)
         returns (bool)
     {
         return
-            interfaceId =
-                type(IERC2981).interfaceId ||
-                super.supportsInterface(interfaceId);
+            interfaceId == type(IERC2981).interfaceId ||
+            super.supportsInterface(interfaceId);
     }
 
     modifier whenNotStopped() {
         require(!emergencyStop, "Contract emergency stopped");
         _;
+    }
+
+    function updateRarityTier(
+        uint256 tierIndex,
+        string calldata name,
+        uint256 probability,
+        uint256 maxSupply,
+        string calldata specialAttribute
+    ) external onlyOwner {
+        require(tierIndex < rarityTiers.length, "Invalid tier index");
+        require(
+            maxSupply >= rarityTiers[tierIndex].currentSupply,
+            "Max supply cannot be less than current supply"
+        );
+
+        RarityTier storage tier = rarityTiers[tierIndex];
+        tier.name = name;
+        tier.probability = probability;
+        tier.maxSupply = maxSupply;
+        tier.specialAttribute = specialAttribute;
+
+        rarityNameToIndex[name] = tierIndex;
+    }
+
+    function getTotalRarityProbability() external view returns (uint256) {
+        uint256 total = 0;
+        for (uint256 i = 0; i < rarityTiers.length; i++) {
+            total += rarityTiers[i].probability;
+        }
+        return total;
+    }
+
+    function getAllRarityTiers() external view returns (RarityTier[] memory) {
+        return rarityTiers;
+    }
+
+    function getContractStats()
+        external
+        view
+        returns (
+            uint256 totalSupply,
+            uint256 remainingSupply,
+            uint256 totalRarityTiers,
+            bool isRevealed,
+            bool isStakingEnabled,
+            bool isWhitelistPhaseActive,
+            bool isAuctionActive
+        )
+    {
+        return (
+            currentSupply,
+            maxSupply - currentSupply,
+            rarityTiers.length,
+            revealed,
+            stakingEnabled,
+            whitelistPhaseActive,
+            auctionActive
+        );
+    }
+
+    function batchStake(uint256[] calldata tokenIds) external nonReentrant {
+        require(stakingEnabled, "Staking not enabled");
+        require(tokenIds.length > 0, "Empty token IDs array");
+        require(tokenIds.length <= 20, "Too many tokens to stake at once");
+
+        for (uint256 i = 0; i < tokenIds.length; i++) {
+            uint256 tokenId = tokenIds[i];
+            require(_exists(tokenId), "Token does not exist");
+            require(ownerOf(tokenId) == msg.sender, "Not token owner");
+            require(!stakedTokens[tokenId], "Token already staked");
+
+            stakedTokens[tokenId] = true;
+            stakingStartTime[tokenId] = block.timestamp;
+            userStakedTokens[msg.sender].push(tokenId);
+
+            emit TokenStaked(tokenId, msg.sender);
+        }
+    }
+
+    function batchUnstake(uint256[] calldata tokenIds) external nonReentrant {
+        require(stakingEnabled, "Staking not enabled");
+        require(tokenIds.length > 0, "Empty token IDs array");
+        require(tokenIds.length <= 20, "Too many tokens to unstake at once");
+
+        for (uint256 i = 0; i < tokenIds.length; i++) {
+            uint256 tokenId = tokenIds[i];
+            require(_exists(tokenId), "Token does not exist");
+            require(ownerOf(tokenId) == msg.sender, "Not token owner");
+            require(stakedTokens[tokenId], "Token not staked");
+
+            stakedTokens[tokenId] = false;
+            stakingStartTime[tokenId] = 0;
+
+            uint256[] storage userTokens = userStakedTokens[msg.sender];
+            for (uint256 j = 0; j < userTokens.length; j++) {
+                if (userTokens[j] == tokenId) {
+                    userTokens[j] = userTokens[userTokens.length - 1];
+                    userTokens.pop();
+                    break;
+                }
+            }
+
+            emit TokenUnstaked(tokenId, msg.sender);
+        }
+    }
+
+    function isTokenStaked(uint256 tokenId) external view returns (bool) {
+        return stakedTokens[tokenId];
+    }
+
+    function getTotalStakedByUser(
+        address user
+    ) external view returns (uint256) {
+        return userStakedTokens[user].length;
+    }
+
+    function pauseContract() external onlyOwner {
+        _pause();
+    }
+
+    function unpauseContract() external onlyOwner {
+        _unpause();
     }
 }
