@@ -13,12 +13,11 @@ import { useAuctionPrice, useAuctionStatus, useAuctionMint } from "@/hooks/useAu
 import { QuantitySelector } from "@/components/mint/QuantitySelector";
 import { SupplyProgress } from "@/components/nft/SupplyProgress";
 import { formatEth } from "@/lib/utils";
-import { CONTRACT_ADDRESS } from "@/lib/contract";
 import { MAX_MINT_PER_TX } from "@/lib/contract";
 import { Flame, Users, Gavel } from "lucide-react";
 
 export default function MintPage() {
-  const { address, isConnected } = useAccount();
+  const { isConnected } = useAccount();
   const [quantity, setQuantity] = useState(1);
   const [auctionQuantity, setAuctionQuantity] = useState(1);
 
@@ -30,7 +29,7 @@ export default function MintPage() {
 
   const { mint, isLoading: mintLoading } = usePublicMint();
   const { batchMint, isLoading: batchLoading } = useBatchMint();
-  const { isWhitelisted, remainingMints, phaseActive, isLoading: wlLoading } = useWhitelistStatus();
+  const { isWhitelisted, remainingMints, phaseActive } = useWhitelistStatus();
   const { whitelistMint, isLoading: wlMintLoading } = useWhitelistMint();
   const currentPrice = useAuctionPrice();
   const { data: auctionStatus } = useAuctionStatus();

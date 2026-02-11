@@ -27,42 +27,6 @@ export function useHasRole(role: `0x${string}`) {
   return hasRole === true;
 }
 
-function useAdminWrite(
-  functionName: string,
-  successMsg: string,
-  getArgs: () => readonly unknown[] | undefined
-) {
-  const queryClient = useQueryClient();
-  const { writeContract, data: hash, isPending, reset } = useWriteContract();
-  const { isLoading: isConfirming, isSuccess } = useWaitForTransactionReceipt({ hash });
-
-  useEffect(() => {
-    if (isSuccess) {
-      toast.success(successMsg);
-      queryClient.invalidateQueries({ queryKey: ["contract"] });
-      reset();
-    }
-  }, [isSuccess, successMsg, queryClient, reset]);
-
-  const execute = () => {
-    const args = getArgs();
-    if (!args) return;
-    writeContract(
-      {
-        address: CONTRACT_ADDRESS,
-        abi: CONTRACT_ABI,
-        functionName: functionName as never,
-        args: args as never[],
-      },
-      {
-        onError: (e) => toast.error(e.message),
-      }
-    );
-  };
-
-  return { execute, isLoading: isPending || isConfirming };
-}
-
 export function useOwnerMint() {
   const { writeContract, data: hash, isPending, reset } = useWriteContract();
   const { isLoading: isConfirming, isSuccess } = useWaitForTransactionReceipt({ hash });

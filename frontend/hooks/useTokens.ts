@@ -5,7 +5,7 @@ import { CONTRACT_ADDRESS, CONTRACT_ABI } from "@/lib/contract";
 import type { Abi } from "viem";
 import { useAccount } from "wagmi";
 import { useMemo } from "react";
-import type { NFTToken, RarityTier, TokenMetadata } from "@/types";
+import type { RarityTier, TokenMetadata } from "@/types";
 import { getIPFSUrl } from "@/lib/utils";
 
 export function useOwnedTokenIds() {

@@ -26,7 +26,7 @@ import { parseEther } from "viem";
 import { Shield, AlertTriangle } from "lucide-react";
 
 export default function AdminPage() {
-  const { address, isConnected } = useAccount();
+  const { isConnected } = useAccount();
   const isOwner = useIsOwner();
 
   if (!isConnected) {
@@ -242,7 +242,7 @@ function AdminAuction() {
 
 function AdminMetadata() {
   const { reveal, isLoading } = useReveal();
-  const { data: revealed } = useReadContract({
+  useReadContract({
     address: CONTRACT_ADDRESS,
     abi: CONTRACT_ABI,
     functionName: "revealed",
@@ -267,7 +267,7 @@ function AdminEmergency() {
   const { pause, unpause, isLoading: pauseLoading } = usePauseContract();
   const { withdraw, isLoading: withdrawLoading } = useWithdraw();
   const { toggleStaking, isLoading: stakingLoading } = useToggleStaking();
-  const { data: emergencyStop } = useReadContract({
+  useReadContract({
     address: CONTRACT_ADDRESS,
     abi: CONTRACT_ABI,
     functionName: "emergencyStop",

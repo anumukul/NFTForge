@@ -12,7 +12,7 @@ import { formatEth } from "@/lib/utils";
 import { MAX_MINT_PER_TX } from "@/lib/contract";
 
 export default function AuctionPage() {
-  const { address, isConnected } = useAccount();
+  const { isConnected } = useAccount();
   const currentPrice = useAuctionPrice();
   const { data: status } = useAuctionStatus();
   const { data: nextDrop } = useNextPriceDropTime();

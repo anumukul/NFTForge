@@ -3,7 +3,7 @@
 import Link from "next/link";
 import { useAccount } from "wagmi";
 import { motion } from "framer-motion";
-import { Gem, Flame, Shield, Gavel, ArrowRight } from "lucide-react";
+import { Gem, Shield, Gavel, ArrowRight } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import {
@@ -23,7 +23,7 @@ import { truncateAddress } from "@/lib/utils";
 import { useState } from "react";
 
 export default function HomePage() {
-  const { address, isConnected } = useAccount();
+  const { isConnected } = useAccount();
   const { data: currentSupply } = useCurrentSupply();
   const { data: maxSupply } = useMaxSupply();
   const { data: tiers } = useRarityTiers();

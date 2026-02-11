@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useMemo } from "react";
+import { useState } from "react";
 import { useAccount } from "wagmi";
 import Image from "next/image";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
@@ -20,7 +20,6 @@ import { getIPFSUrl } from "@/lib/utils";
 import { formatDuration } from "@/lib/utils";
 import { Skeleton } from "@/components/ui/skeleton";
 import { LayoutGrid, Shield } from "lucide-react";
-import type { TokenMetadata } from "@/types";
 import { useQuery } from "@tanstack/react-query";
 
 function NFTCard({
@@ -30,7 +29,7 @@ function NFTCard({
   tokenId: number;
   onSelect: () => void;
 }) {
-  const { tokenURI, rarity, isStaked, stakingDuration, isLoading } = useTokenDetails(tokenId);
+  const { tokenURI, rarity, isStaked, isLoading } = useTokenDetails(tokenId);
   const { data: metadata } = useQuery({
     queryKey: ["metadata", tokenURI],
     queryFn: () => (tokenURI ? fetchTokenMetadata(tokenURI) : Promise.resolve(null)),
@@ -98,7 +97,7 @@ function NFTDetailModal({
   open: boolean;
   onClose: () => void;
 }) {
-  const { tokenURI, rarity, isStaked, stakingDuration, isLoading } = useTokenDetails(tokenId ?? undefined);
+  const { tokenURI, rarity, isStaked, stakingDuration } = useTokenDetails(tokenId ?? undefined);
   const { data: metadata } = useQuery({
     queryKey: ["metadata", tokenURI],
     queryFn: () => (tokenURI ? fetchTokenMetadata(tokenURI) : Promise.resolve(null)),
@@ -179,11 +178,9 @@ function NFTDetailModal({
 }
 
 export default function MyNFTsPage() {
-  const { address, isConnected } = useAccount();
+  const { isConnected } = useAccount();
   const { tokenIds, isLoading } = useOwnedTokenIds();
   const [selectedId, setSelectedId] = useState<number | null>(null);
-  const [rarityFilter, setRarityFilter] = useState<string>("all");
-  const [stakingFilter, setStakingFilter] = useState<string>("all");
 
   if (!isConnected) {
     return (

@@ -1,6 +1,5 @@
 "use client";
 
-import { useState } from "react";
 import { useAccount } from "wagmi";
 import Image from "next/image";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
@@ -70,7 +69,7 @@ function StakingCard({
 }
 
 export default function StakingPage() {
-  const { address, isConnected } = useAccount();
+  const { isConnected } = useAccount();
   const { data: stakingEnabled } = useStakingEnabled();
   const { data: stakedIdsData } = useUserStakedTokens();
   const stakedIds = (stakedIdsData ?? []) as bigint[];

@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect } from "react";
 import {
   useReadContract,
   useWriteContract,
@@ -16,13 +16,11 @@ export function useAuctionPrice() {
     abi: CONTRACT_ABI,
     functionName: "getCurrentAuctionPrice",
   });
-  const [mounted, setMounted] = useState(false);
   useEffect(() => {
-    setMounted(true);
     const interval = setInterval(() => refetch(), 2000);
     return () => clearInterval(interval);
   }, [refetch]);
-  return mounted ? price : undefined;
+  return price;
 }
 
 export function useAuctionStatus() {

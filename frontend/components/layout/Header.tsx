@@ -15,7 +15,6 @@ import {
   Menu,
 } from "lucide-react";
 import { useState } from "react";
-import { useAccount } from "wagmi";
 
 const navLinks = [
   { href: "/", label: "Home", icon: Gem },
@@ -31,7 +30,6 @@ const navLinks = [
 export function Header() {
   const pathname = usePathname();
   const [mobileOpen, setMobileOpen] = useState(false);
-  const { address } = useAccount();
 
   return (
     <header className="sticky top-0 z-50 w-full border-b border-border/40 bg-background/80 backdrop-blur-xl">

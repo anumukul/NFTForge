@@ -4,7 +4,7 @@ import { useState } from "react";
 import Image from "next/image";
 import { Card, CardContent, CardHeader } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
-import { useCurrentSupply, useRarityTiers } from "@/hooks/useNFTContract";
+import { useRarityTiers } from "@/hooks/useNFTContract";
 import { RarityBadge } from "@/components/nft/RarityBadge";
 import { SupplyProgress } from "@/components/nft/SupplyProgress";
 import { CONTRACT_ADDRESS, CONTRACT_ABI } from "@/lib/contract";
@@ -98,7 +98,7 @@ function CollectionGrid({ page, pageSize, totalSupply }: { page: number; pageSiz
   const start = page * pageSize;
   const tokenIds = useMemo(() => {
     return Array.from({ length: pageSize }, (_, i) => start + i + 1).filter((id) => id <= totalSupply);
-  }, [page, pageSize, totalSupply, start]);
+  }, [pageSize, totalSupply, start]);
 
   const contracts = useMemo(() => {
     return tokenIds.flatMap((id) => [
