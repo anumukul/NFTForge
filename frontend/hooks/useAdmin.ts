@@ -211,3 +211,51 @@ export function useEndAuction() {
   };
   return { endAuction, isLoading: isPending };
 }
+
+export function useAddToWhitelist() {
+  const q = useQueryClient();
+  const { writeContract, data: hash, isPending, reset } = useWriteContract();
+  const { isSuccess } = useWaitForTransactionReceipt({ hash });
+  useEffect(() => {
+    if (isSuccess) {
+      toast.success("Addresses added to whitelist");
+      q.invalidateQueries({ queryKey: ["contract"] });
+      reset();
+    }
+  }, [isSuccess, q, reset]);
+  const addToWhitelist = (addresses: `0x${string}`[]) => {
+    if (addresses.length === 0) {
+      toast.error("At least one address required");
+      return;
+    }
+    writeContract(
+      { address: CONTRACT_ADDRESS, abi: CONTRACT_ABI, functionName: "addToWhitelist", args: [addresses] },
+      { onError: (e) => toast.error(e.message) }
+    );
+  };
+  return { addToWhitelist, isLoading: isPending || isSuccess };
+}
+
+export function useRemoveFromWhitelist() {
+  const q = useQueryClient();
+  const { writeContract, data: hash, isPending, reset } = useWriteContract();
+  const { isSuccess } = useWaitForTransactionReceipt({ hash });
+  useEffect(() => {
+    if (isSuccess) {
+      toast.success("Addresses removed from whitelist");
+      q.invalidateQueries({ queryKey: ["contract"] });
+      reset();
+    }
+  }, [isSuccess, q, reset]);
+  const removeFromWhitelist = (addresses: `0x${string}`[]) => {
+    if (addresses.length === 0) {
+      toast.error("At least one address required");
+      return;
+    }
+    writeContract(
+      { address: CONTRACT_ADDRESS, abi: CONTRACT_ABI, functionName: "removeFromWhitelist", args: [addresses] },
+      { onError: (e) => toast.error(e.message) }
+    );
+  };
+  return { removeFromWhitelist, isLoading: isPending || isSuccess };
+}

@@ -6,6 +6,7 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/com
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
+import { Textarea } from "@/components/ui/textarea";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { useIsOwner } from "@/hooks/useAdmin";
 import {
@@ -18,12 +19,15 @@ import {
   useSetWhitelistPhase,
   useStartAuction,
   useEndAuction,
+  useAddToWhitelist,
+  useRemoveFromWhitelist,
 } from "@/hooks/useAdmin";
 import { useContractStats, useRarityTiers } from "@/hooks/useNFTContract";
 import { useReadContract } from "wagmi";
 import { CONTRACT_ADDRESS, CONTRACT_ABI } from "@/lib/contract";
 import { parseEther } from "viem";
 import { Shield, AlertTriangle } from "lucide-react";
+import toast from "react-hot-toast";
 
 export default function AdminPage() {
   const { isConnected } = useAccount();
@@ -160,26 +164,153 @@ function AdminMint() {
 }
 
 function AdminWhitelist() {
-  const { setWhitelistPhase, isLoading } = useSetWhitelistPhase();
+  const { setWhitelistPhase, isLoading: phaseLoading } = useSetWhitelistPhase();
+  const { addToWhitelist, isLoading: addLoading } = useAddToWhitelist();
+  const { removeFromWhitelist, isLoading: removeLoading } = useRemoveFromWhitelist();
   const { data: stats } = useContractStats();
+  const [addressInput, setAddressInput] = useState("");
+  const [bulkAddresses, setBulkAddresses] = useState("");
+
+  const parseAddresses = (input: string): `0x${string}`[] => {
+    return input
+      .split(/[,\n]/)
+      .map((addr) => addr.trim())
+      .filter((addr) => addr.startsWith("0x") && addr.length === 42)
+      .map((addr) => addr.toLowerCase() as `0x${string}`);
+  };
+
+  const handleAddSingle = () => {
+    const addresses = parseAddresses(addressInput);
+    if (addresses.length === 0) {
+      toast.error("Invalid address format");
+      return;
+    }
+    addToWhitelist(addresses);
+    setAddressInput("");
+  };
+
+  const handleAddBulk = () => {
+    const addresses = parseAddresses(bulkAddresses);
+    if (addresses.length === 0) {
+      toast.error("No valid addresses found");
+      return;
+    }
+    addToWhitelist(addresses);
+    setBulkAddresses("");
+  };
+
+  const handleRemoveSingle = () => {
+    const addresses = parseAddresses(addressInput);
+    if (addresses.length === 0) {
+      toast.error("Invalid address format");
+      return;
+    }
+    removeFromWhitelist(addresses);
+    setAddressInput("");
+  };
+
+  const handleRemoveBulk = () => {
+    const addresses = parseAddresses(bulkAddresses);
+    if (addresses.length === 0) {
+      toast.error("No valid addresses found");
+      return;
+    }
+    removeFromWhitelist(addresses);
+    setBulkAddresses("");
+  };
+
   return (
-    <Card>
-      <CardHeader>
-        <CardTitle>Whitelist phase</CardTitle>
-        <CardDescription>Turn whitelist minting on or off.</CardDescription>
-      </CardHeader>
-      <CardContent className="flex gap-2">
-        <Button disabled={isLoading} onClick={() => setWhitelistPhase(true)}>
-          Activate
-        </Button>
-        <Button variant="outline" disabled={isLoading} onClick={() => setWhitelistPhase(false)}>
-          Deactivate
-        </Button>
-        <span className="text-sm text-muted-foreground">
-          Current: {stats?.isWhitelistPhaseActive ? "Active" : "Inactive"}
-        </span>
-      </CardContent>
-    </Card>
+    <div className="space-y-4">
+      <Card>
+        <CardHeader>
+          <CardTitle>Whitelist phase</CardTitle>
+          <CardDescription>Turn whitelist minting on or off.</CardDescription>
+        </CardHeader>
+        <CardContent className="flex gap-2">
+          <Button disabled={phaseLoading} onClick={() => setWhitelistPhase(true)}>
+            Activate
+          </Button>
+          <Button variant="outline" disabled={phaseLoading} onClick={() => setWhitelistPhase(false)}>
+            Deactivate
+          </Button>
+          <span className="text-sm text-muted-foreground">
+            Current: {stats?.isWhitelistPhaseActive ? "Active" : "Inactive"}
+          </span>
+        </CardContent>
+      </Card>
+
+      <Card>
+        <CardHeader>
+          <CardTitle>Add to whitelist</CardTitle>
+          <CardDescription>Add one or multiple addresses to the whitelist.</CardDescription>
+        </CardHeader>
+        <CardContent className="space-y-4">
+          <div>
+            <Label>Single address</Label>
+            <div className="flex gap-2 mt-1">
+              <Input
+                value={addressInput}
+                onChange={(e) => setAddressInput(e.target.value)}
+                placeholder="0x..."
+                className="flex-1"
+              />
+              <Button disabled={addLoading || !addressInput} onClick={handleAddSingle}>
+                Add
+              </Button>
+            </div>
+          </div>
+          <div>
+            <Label>Bulk addresses (comma or newline separated)</Label>
+            <Textarea
+              value={bulkAddresses}
+              onChange={(e) => setBulkAddresses(e.target.value)}
+              placeholder="0x123..., 0x456...&#10;0x789..."
+              className="mt-1 font-mono text-sm"
+              rows={6}
+            />
+            <Button disabled={addLoading || !bulkAddresses} onClick={handleAddBulk} className="mt-2">
+              Add all
+            </Button>
+          </div>
+        </CardContent>
+      </Card>
+
+      <Card>
+        <CardHeader>
+          <CardTitle>Remove from whitelist</CardTitle>
+          <CardDescription>Remove addresses from the whitelist.</CardDescription>
+        </CardHeader>
+        <CardContent className="space-y-4">
+          <div>
+            <Label>Single address</Label>
+            <div className="flex gap-2 mt-1">
+              <Input
+                value={addressInput}
+                onChange={(e) => setAddressInput(e.target.value)}
+                placeholder="0x..."
+                className="flex-1"
+              />
+              <Button variant="destructive" disabled={removeLoading || !addressInput} onClick={handleRemoveSingle}>
+                Remove
+              </Button>
+            </div>
+          </div>
+          <div>
+            <Label>Bulk addresses (comma or newline separated)</Label>
+            <Textarea
+              value={bulkAddresses}
+              onChange={(e) => setBulkAddresses(e.target.value)}
+              placeholder="0x123..., 0x456...&#10;0x789..."
+              className="mt-1 font-mono text-sm"
+              rows={6}
+            />
+            <Button variant="destructive" disabled={removeLoading || !bulkAddresses} onClick={handleRemoveBulk} className="mt-2">
+              Remove all
+            </Button>
+          </div>
+        </CardContent>
+      </Card>
+    </div>
   );
 }
 
